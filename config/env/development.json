@@ -1,0 +1,41 @@
+{
+    "botOptions": {
+        "server":        "irc.redbrick.dcu.ie",
+        "nick":          "CAHDEV",
+        "database": true
+    },
+
+    "gameOptions": {
+        "setTopic":      true,
+        "topicBase":     "|| This will be appended to the topic along with the game status.",
+        "notifyUsers":   false,
+        "pointLimit":    10,
+        "idleLimit": 2,
+        "secondsBeforeStart": 60,
+        "roundMinutes": 6
+    },
+
+    "connectCommands": [
+        {
+            "target": "",
+            "message": ""
+        }
+    ],
+
+    "joinCommands": {
+        "#cah": [
+            {
+                "target": "",
+                "message": ""
+            }
+        ]
+    },
+
+    "clientOptions": {
+        "userName":             "cah",
+        "channels":             ["#CardsAgainstHumanityDev"],
+        "debug": true,
+        "floodProtection":      true,
+        "floodProtectionDelay": 1000
+    }
+}
