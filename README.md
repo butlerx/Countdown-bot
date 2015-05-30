@@ -11,12 +11,16 @@ IRC bot that let's you play countdown in IRC. The game is running in irc.redbric
 * **!j** - Alias for join command
 * **!quit** - Quit from the game.
 * **!q** - Alias for quit command
-* **!play #** - Play your answer for the round.
+* **!play** - Play your answer for the round.
 * **!points** - Show players' *awesome points* in the current game.
 * **!list** - List players in the current game.
 * **!players** - Alias for !list command
 * **!status** - Show current status of the game. Output depends on the state of the game (e.g. when waiting for players to play, you can check who hasn't played yet)
 * **!p** - Alias for !play command
+* **!consonant** - choose a consonant
+* **!c** - alias of !consonant
+* **!vowel** - choose a vowel
+* **!v** - alias of vowel
 
 All of these commands are case insensitive and are trimmed for whitespace so "!start" and "    !StaRt" will work the same
 
