@@ -3,8 +3,6 @@ var util = require('util'),
     _ = require('underscore'),
     Sequelize = require('sequelize'),
     inflection = require('inflection'),
-    Cards = require('../controllers/cards'),
-    Card = require('../models/card');
 
 /**
  * Available states for game
