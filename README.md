@@ -2,8 +2,11 @@
 
 IRC bot that let's you play countdown in IRC. The game is running in irc.redbrick.dcu.ie on #countdown, but you can just as easily run your own instance on your own channel for more private games.
 
+#development Stage
+this bot is in pre-Alpha stage and not near ready
+
 ##Commands
-* **!start #** - Start a new game. Optional parameter can by used to set a point limit for the game (e.g. `!start 10` to play until one player has 10 points.)
+* **!start #** - Start a new game. Optional parameter can be used to set the number playing (e.g. `!start 10` to wait for the people to join.)
 * **!stop** - Stop the currently running game.
 * **!pause** - Pause the currently running game.
 * **!resume** - Resume a paused game.
@@ -42,8 +45,6 @@ Main configuration files are located in `config/env`. There are two files by def
 
 It is possible to configure the bot to send a message to a user or channel after connecting to server or joining a specific channel using `connectCommands` and `joinCommands`. This can be used, for example, to identify with NickServ on networks that require it. See examples below.
 
-###Cards
-Card configuration is located in `config/cards` directory. Some files are included by default, that contain the default cards of the game plus some extra cards from [BoardGameGeek](http://boardgamegeek.com/). You can add your custom cards to `Custom_a.json` (for answers) and `Custom_q.json` (for questions), using the same format as the default card files. Any card you add to these files will also be automatically loaded to the game during start up..
 
 ###Notify Users
 Users currently in the channel with the bot can be notified when a game begins by setting the `notifyUsers` directive to true. Users with ~ and & modes are not notified.
