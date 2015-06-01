@@ -8,7 +8,7 @@ var Player = function Player(nick, user, hostname) {
     self.user = user;
     self.hostname = hostname;
     self.hasPlayed = false;
-    self.isCzar = false;
+    self.isPicker false;
     self.isActive = true;
     self.idleCount = 0;
     self.points = 0;

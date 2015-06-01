@@ -1,7 +1,7 @@
 {
     "botOptions": {
         "server":        "irc.redbrick.dcu.ie",
-        "nick":          "CAHDEV",
+        "nick":          "CountdownDEV",
         "database": true
     },
 
@@ -32,8 +32,8 @@
     },
 
     "clientOptions": {
-        "userName":             "cah",
-        "channels":             ["#CardsAgainstHumanityDev"],
+        "userName":             "countdown",
+        "channels":             ["#CountdownDEV"],
         "debug": true,
         "floodProtection":      true,
         "floodProtectionDelay": 1000

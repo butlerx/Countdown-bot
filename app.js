@@ -1,6 +1,7 @@
 /**
  * Countdown IRC bot
  * main application script
+ * Based of CAH-Bot by Creadak
  */
 console.log('Countdown IRC bot');
 

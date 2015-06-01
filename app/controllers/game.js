@@ -12,7 +12,7 @@ var STATES = {
     STOPPED:   'Stopped',
     STARTED:   'Started',
     PLAYABLE:  'Playable',
-    PLAYED:    'Played',
+    ANSWER:    'Answer',
     ROUND_END: 'RoundEnd',
     WAITING:   'Waiting',
     PAUSED:    'Paused',
@@ -135,35 +135,14 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
       });
     });
 
-    console.log('Loaded', config.cards.length, 'cards:');
-    var questions = _.filter(config.cards, function(card) {
-      return card.type.toLowerCase() === 'question';
-    });
-    console.log(questions.length, 'questions');
 
-    var answers = _.filter(config.cards, function(card) {
-        return card.type.toLowerCase() === 'answer';
-    });
-    console.log(answers.length, 'answers');
-
-    // init decks
-    self.decks = {
-        question: new Cards(questions),
-        answer: new Cards(answers)
-    };
-    // init discard piles
-    self.discards = {
-        question: new Cards(),
-        answer: new Cards()
-    };
+    ;
     // init table slots
     self.table = {
         question: null,
         answer: []
     };
-    // shuffle decks
-    self.decks.question.shuffle();
-    self.decks.answer.shuffle();
+
 
     // parse point limit from configuration file
     if(typeof config.gameOptions.pointLimit !== 'undefined' && !isNaN(config.gameOptions.pointLimit)) {
@@ -281,15 +260,7 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
 
         // resume timers
         if (self.state === STATES.PLAYED) {
-            // check if czar quit during pause
-            if(self.players.indexOf(self.czar) < 0) {
-                // no czar
-                self.say('The czar quit the game during pause. I will pick the winner on this round.');
-                // select winner
-                self.selectWinner(Math.round(Math.random() * (self.table.answer.length - 1)));
-            } else {
-                self.winnerTimer = setInterval(self.winnerTimerCheck, 10 * 1000);
-            }
+            self.winnerTimer = setInterval(self.winnerTimerCheck, 10 * 1000);
         } else if (self.state === STATES.PLAYABLE) {
             self.turnTimer = setInterval(self.turnTimerCheck, 10 * 1000);
         }
@@ -326,52 +297,44 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         self.round++;
         self.dbGame.update({num_rounds: self.round});
         console.log('Starting round ', self.round);
-
-        self.setCzar();
+        self.setpicker();
         self.deal();
-        self.say('Round ' + self.round + '! ' + self.czar.nick + ' is the card czar.');
+        self.say('Round ' + self.round + '! ' + self.picker.nick + ' is the card picker.');
         self.playQuestion();
-
-        // show cards for all players (except czar)
-        _.each(self.players, function (player) {
-            if (player.isCzar !== true && player.isActive === true) {
-                self.showCards(player);
-            }
-        });
 
         self.state = STATES.PLAYABLE;
     };
 
     /**
-     * Set a new czar
-     * @returns Player The player object who is the new czar
+     * Set a new picker
+     * @returns Player The player object who is the new picker
      */
-    self.setCzar = function () {
-        if (self.czar) {
-          console.log('Old czar: ' + self.czar.nick);
+    self.setpicker = function () {
+        if (self.picker) {
+          console.log('Old picker: ' + self.picker.nick);
 
-          var nextCzar;
+          var nextpicker;
 
           self.players.forEach(function (player) {
             console.log(player.nick + ': ' + player.isActive);
           });
 
-          for (var i = (self.players.indexOf(self.czar) + 1) % self.players.length; i !== self.players.indexOf(self.czar); i = (i + 1) % self.players.length) {
+          for (var i = (self.players.indexOf(self.picker) + 1) % self.players.length; i !== self.players.indexOf(self.picker); i = (i + 1) % self.players.length) {
             console.log(i + ': ' + self.players[i].nick + ': ' + self.players[i].isActive);
             if (self.players[i].isActive === true) {
-              nextCzar = i;
+              nextpicker = i;
               break;
             }
           }
 
-          self.czar = self.players[i];
+          self.picker = self.players[i];
         } else {
-          self.czar = _.where(self.players, { isActive: true })[0];
+          self.picker = _.where(self.players, { isActive: true })[0];
         }
 
-        console.log('New czar:', self.czar.nick);
-        self.czar.isCzar = true;
-        return self.czar;
+        console.log('New picker:', self.picker.nick);
+        self.picker.ispicker = true;
+        return self.picker;
     };
 
     /**
@@ -424,7 +387,7 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         _.each(self.players, function (player) {
             player.hasPlayed = false;
             player.hasDiscarded = false;
-            player.isCzar = false;
+            player.ispicker = false;
             // check if idled and remove
             if (player.inactiveRounds >= 1) {
                 player.inactiveRounds=0;
@@ -464,13 +427,13 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         });
 
         // PM Card to players
-        _.each(_.where(self.players, {isCzar: false, isActive: true}), function(player) {
+        _.each(_.where(self.players, {ispicker: false, isActive: true}), function(player) {
             self.pm(player.nick, c.bold('CARD: ') + value);
         });
 
         // draw cards
         if (self.table.question.draw > 0) {
-            _.each(_.where(self.players, {isCzar: false, isActive: true}), function (player) {
+            _.each(_.where(self.players, {ispicker: false, isActive: true}), function (player) {
                 for (var i = 0; i < self.table.question.draw; i++) {
                     self.checkDecks();
                     var c = self.decks.answer.pickCards();
@@ -503,8 +466,8 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         if (self.state !== STATES.PLAYABLE || player.cards.numCards() === 0) {
             self.say(player.nick + ': Can\'t play at the moment.');
         } else if (typeof player !== 'undefined') {
-            if (player.isCzar === true) {
-                self.say(player.nick + ': You are the card czar. The czar does not play. The czar makes other people do their dirty work.');
+            if (player.ispicker === true) {
+                self.say(player.nick + ': You are the card picker. The picker does not play. The picker makes other people do their dirty work.');
             } else {
                 if (player.hasPlayed === true) {
                     self.say(player.nick + ': You have already played on this round.');
@@ -559,8 +522,8 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         if (self.state !== STATES.PLAYABLE || player.cards.numCards() === 0) {
             self.say(player.nick + ': Can\'t discard at the moment.');
         } else if (typeof player !== 'undefined') {
-            if (player.isCzar === true) {
-                self.say(player.nick + ': You are the card czar. You cannot discard cards until you are a regular player.');
+            if (player.ispicker === true) {
+                self.say(player.nick + ': You are the card picker. You cannot discard cards until you are a regular player.');
             } else {
                 if (player.hasDiscarded === true) {
                     self.say(player.nick + ': You may only discard once per turn.');
@@ -658,14 +621,14 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
             _.each(self.table.answer, function (cards, i) {
                 self.say(i + ": " + self.getFullEntry(self.table.question, cards.getCards()));
             }, this);
-            // check that czar still exists
-            var currentCzar = _.findWhere(this.players, {isCzar: true, isActive: true});
-            if (typeof currentCzar === 'undefined') {
-                // no czar, random winner (TODO: Voting?)
-                self.say('The czar has fled the scene. So I will pick the winner on this round.');
+            // check that picker still exists
+            var currentpicker = _.findWhere(this.players, {ispicker: true, isActive: true});
+            if (typeof currentpicker === 'undefined') {
+                // no picker, random winner (TODO: Voting?)
+                self.say('The picker has fled the scene. So I will pick the winner on this round.');
                 self.selectWinner(Math.round(Math.random() * (self.table.answer.length - 1)));
             } else {
-                self.say(self.czar.nick + ': Select the winner (!winner <entry number>)');
+                self.say(self.picker.nick + ': Select the winner (!winner <entry number>)');
                 // start turn timer, check every 10 secs
                 clearInterval(self.winnerTimer);
                 self.roundStarted = new Date();
@@ -681,26 +644,10 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
     self.winnerTimerCheck = function () {
         // check the time
         var now = new Date();
-        var timeLimit = 60 * 1000 * config.gameOptions.roundMinutes;
+        var timeLimit = 10 * 1000 ;
         var roundElapsed = (now.getTime() - self.roundStarted.getTime());
         console.log('Winner selection elapsed:', roundElapsed, now.getTime(), self.roundStarted.getTime());
-        if (roundElapsed >= timeLimit) {
-            console.log('the czar is inactive, selecting winner');
-            self.say('Time is up. I will pick the winner on this round.');
-            // Check czar & remove player after 3 timeouts
-            self.czar.inactiveRounds++;
-            // select winner
-            self.selectWinner(Math.round(Math.random() * (self.table.answer.length - 1)));
-        } else if (roundElapsed >= timeLimit - (10 * 1000) && roundElapsed < timeLimit) {
-            // 10s ... 0s left
-            self.say(self.czar.nick + ': 10 seconds left!');
-        } else if (roundElapsed >= timeLimit - (30 * 1000) && roundElapsed < timeLimit - (20 * 1000)) {
-            // 30s ... 20s left
-            self.say(self.czar.nick + ': 30 seconds left!');
-        } else if (roundElapsed >= timeLimit - (60 * 1000) && roundElapsed < timeLimit - (50 * 1000)) {
-            // 60s ... 50s left
-            self.say(self.czar.nick + ': Hurry up, 1 minute left!');
-        }
+        self.say('10 seconds to pm answers');
     };
 
     /**
@@ -720,8 +667,8 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
 
         var winner = self.table.answer[index];
         if (self.state === STATES.PLAYED) {
-            if (typeof player !== 'undefined' && player !== self.czar) {
-                client.say(player.nick + ': You are not the card czar. Only the card czar can select the winner');
+            if (typeof player !== 'undefined' && player !== self.picker) {
+                client.say(player.nick + ': You are not the card picker. Only the card picker can select the winner');
             } else if (typeof winner === 'undefined') {
                 self.say('Invalid winner');
             } else {
@@ -868,9 +815,9 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
                 self.showEntries();
             }
 
-            // check czar
-            if (self.state === STATES.PLAYED && self.czar === player) {
-                self.say('The czar has fled the scene. So I will pick the winner on this round.');
+            // check picker
+            if (self.state === STATES.PLAYED && self.picker === player) {
+                self.say('The picker has fled the scene. So I will pick the winner on this round.');
                 self.selectWinner(Math.round(Math.random() * (self.table.answer.length - 1)));
             }
 
@@ -887,7 +834,7 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         return _.where(_.filter(self.players, function (player) {
             // check only players with cards (so players who joined in the middle of a round are ignored)
             return player.cards.numCards() > 0;
-        }), {hasPlayed: false, isCzar: false, isActive: true});
+        }), {hasPlayed: false, ispicker: false, isActive: true});
     };
 
     /**
@@ -944,16 +891,16 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
             activePlayers = _.filter(self.players, function (player) {
                 return player.isActive;
             }),
-            playersNeeded = Math.max(0, 3 - activePlayers.length),
-            played = _.where(activePlayers, {isCzar: false, hasPlayed: true, isActive: true}), // players who have already played
-            notPlayed = _.where(activePlayers, {isCzar: false, hasPlayed: false, isActive: true}); // players who have not played yet
+            playersNeeded = Math.max(0, 2 - activePlayers.length),
+            played = _.where(activePlayers, {ispicker: false, hasPlayed: true, isActive: true}), // players who have already played
+            notPlayed = _.where(activePlayers, {ispicker: false, hasPlayed: false, isActive: true}); // players who have not played yet
         switch (self.state) {
             case STATES.PLAYABLE:
-                self.say(c.bold('Status: ') + self.czar.nick + ' is the czar. Waiting for ' +
+                self.say(c.bold('Status: ') + self.picker.nick + ' is the picker. Waiting for ' +
                     inflection.inflect('players', _.pluck(notPlayed, 'nick').length) + ' to play: ' + _.pluck(notPlayed, 'nick').join(', '));
                 break;
-            case STATES.PLAYED:
-                self.say(c.bold('Status: ') + 'Waiting for ' + self.czar.nick + ' to select the winner.');
+            case STATES.PLAY:
+                self.say(c.bold('Status: ') + 'Waiting for ' + self.picker.nick + ' to select the winner.');
                 break;
             case STATES.ROUND_END:
                 self.say(c.bold('Status: ') + 'Round has ended and next one is starting.');
@@ -1103,7 +1050,7 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         // loop through and send messages
         _.each(nicks, function(mode, nick) {
             if (_.indexOf(exemptModes, mode) < 0 && nick !== config.botOptions.nick) {
-                self.notice(nick, nick + ': A new game of Cards Against Humanity just began in ' + channel + '. Head over and !join if you\'d like to get in on the fun!');
+                self.notice(nick, nick + ': A new game of ' + c.rainbow('Countdown') + '. The game starts in ' + config.gameOptions.secondsBeforeStart  + ' ' + inflection.inflect('seconds', config.gameOptions.secondsBeforeStart) + '. Type !join to join the game any time.');
             }
         });
 
@@ -1131,8 +1078,7 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
     self.setTopic(c.bold.lime('A game is running. Type !join to get in on it!'));
 
     // announce the game on the channel
-    self.say('A new game of ' + c.rainbow('Cards Against Humanity') + '. The game starts in ' + config.gameOptions.secondsBeforeStart
-        + ' ' + inflection.inflect('seconds', config.gameOptions.secondsBeforeStart) + '. Type !join to join the game any time.');
+    self.say('A new game of ' + c.rainbow('Countdown') + '. The game starts in ' + config.gameOptions.secondsBeforeStart  + ' ' + inflection.inflect('seconds', config.gameOptions.secondsBeforeStart) + '. Type !join to join the game any time.');
 
     // notify users
     if (typeof config.gameOptions.notifyUsers !== 'undefined' && config.gameOptions.notifyUsers) {
