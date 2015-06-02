@@ -27,10 +27,9 @@ var STATES = {
  * @param client The IRC client object
  * @param config Configuration variables
  * @param cmdArgs !start command arguments
- * @param dbModels sequelize database Models
  * @constructor
  */
-var Game = function Game(channel, client, config, cmdArgs, dbModels) {
+var Game = function Game(channel, client, config, cmdArgs ) {
     var self = this;
 
     // properties
@@ -45,106 +44,7 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
     self.pauseState = []; // pause state storage
     self.notifyUsersPending = false;
     self.pointLimit = 0; // point limit for the game, defaults to 0 (== no limit)
-    self.dbModels = dbModels;
 
-    /*
-     *
-     *  Database functions
-     *
-     */
-
-     self.updateOrCreateInstance = function(model, query, createFields, updateFields) {
-       model.findOne(query).then(function (instance) {
-          if (instance === null && createFields !== null) {
-            model.create(createFields);
-          } else if (instance !== null && updateFields !== null) {
-            instance.update(updateFields);
-          }
-       });
-     };
-
-     self.updatePointsDatabaseTable = function() {
-       self.players.forEach(function (player) {
-         self.dbModels.Player.findOne({where: {nick: player.nick}}).then(function (dbPlayer) {
-           self.updateOrCreateInstance(
-             self.dbModels.Points,
-             {where: {player_id: dbPlayer.id, game_id: self.dbGame.id}},
-             {player_id: dbPlayer.id, game_id: self.dbGame.id, points: player.points},
-             {points: player.points}
-           )
-         });
-       });
-     };
-
-     self.updateCardComboTable = function(id, playerCards) {
-       var round = self.dbCurrentRound;
-       var cardString = [];
-
-       self.dbModels.Answer.findAll({
-         where: {
-           text: {
-             in: _.map(playerCards, function(card) { return card.value; })
-           }
-          }
-        }).then(function (cards) {
-          if (playerCards.length === 1) {
-            cardString = cards[0].id;
-          } else {
-            var cardString = [];
-            playerCards.forEach(function (playerCard) {
-              cards.forEach(function (card) {
-                if (playerCard.value === card.text) {
-                  cardString.push(card.id);
-                }
-              });
-            });
-
-            cardString = cardString.join(',');
-          }
-
-          self.updateOrCreateInstance(self.dbModels.CardCombo,
-            { where: { game_id: self.dbGame.id, player_id: id, question_id: round.question_id } },
-            { game_id: self.dbGame.id, player_id: id, question_id: round.question_id, answer_ids: cardString, winner: false },
-            null
-          );
-
-          // Finally update each of the cards times played count
-          cards.forEach(function (card) {
-            card.update({times_played: card.times_played + 1});
-          });
-       });
-     };
-
-     self.createRound = function(question_id) {
-       self.dbModels.Round.create({
-         game_id: self.dbGame.id,
-         round_number: self.round,
-         num_active_players: _.filter(self.players, function (player) {return player.isActive}).length,
-         total_players: self.players.length,
-         question_id: question_id
-       }).then(function (round) {
-         self.dbCurrentRound = round;
-       });
-     };
-
-    // Adding game to database
-    self.dbModels.Game.create({num_rounds: self.round}).then(function (game) {
-      self.dbGame = game;
-      self.playersToAdd.forEach(function (player) {
-        self.addPlayer(player);
-      });
-    });
-
-
-    ;
-    // init table slots
-    self.table = {
-        question: null,
-        answer: []
-    };
-
-
-    // parse point limit from configuration file
     if(typeof config.gameOptions.pointLimit !== 'undefined' && !isNaN(config.gameOptions.pointLimit)) {
         console.log('Set game point limit to ' + config.gameOptions.pointLimit + ' from config');
         self.pointLimit = parseInt(config.gameOptions.pointLimit);
@@ -172,16 +72,9 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
 
         if (pointLimitReached !== true) {
           self.say('Game has been stopped.');
-          self.dbGame.update({ended_at: new Date(), num_rounds: self.round, winner_id: null});
         } else {
           winner = self.getPlayer({points: self.pointLimit});
-          self.dbModels.Player.findOne({where: {nick: winner.nick}}).then(function (player) {
-            self.dbGame.update({ended_at: new Date(), num_rounds: self.round, winner_id: player.id});
-          });
         }
-
-        // Update points table
-        self.updatePointsDatabaseTable();
 
         // clear all timers
         clearTimeout(self.startTimeout);
@@ -284,7 +177,7 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
 
         // check that there's enough players in the game
         if (_.where(self.players, { isActive: true}).length < 3) {
-            self.say('Not enough players to start a round (need at least 3). Waiting for others to join. Stopping in ' +
+            self.say('Not enough players to start a round (need at least 4). Waiting for others to join. Stopping in ' +
                 config.gameOptions.roundMinutes + ' ' + inflection.inflect('minutes', config.gameOptions.roundMinutes) + ' if not enough players.');
             self.state = STATES.WAITING;
             // stop game if not enough pleyers in however many minutes in the config
@@ -292,14 +185,10 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
             return false;
         }
 
-        self.updatePointsDatabaseTable();
-
         self.round++;
-        self.dbGame.update({num_rounds: self.round});
         console.log('Starting round ', self.round);
         self.setpicker();
-        self.deal();
-        self.say('Round ' + self.round + '! ' + self.picker.nick + ' is the card picker.');
+        self.say('Round ' + self.round + '! ' + self.picker.nick + ' is the picker.');
         self.playQuestion();
 
         self.state = STATES.PLAYABLE;
@@ -337,51 +226,11 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         return self.picker;
     };
 
-    /**
-     * Deal cards to fill players' hands
-     */
-    self.deal = function (player, num) {
-        if (typeof player === 'undefined') {
-            _.each(self.players, function (player) {
-              if (player.isActive) {
-                console.log(player.nick + '(' + player.hostname + ') has ' + player.cards.numCards() + ' cards. Dealing ' + (10 - player.cards.numCards()) + ' cards');
-                for (var i = player.cards.numCards(); i < 10; i++) {
-                    self.checkDecks();
-                    var card = self.decks.answer.pickCards();
-                    player.cards.addCard(card);
-                    card.owner = player;
-                }
-              }
-            }, this);
-        } else {
-            if (typeof num !== 'undefined') {
-                for (var i = player.cards.numCards(); i < num; i++) {
-                    self.checkDecks();
-                    var card = self.decks.answer.pickCards();
-                    player.cards.addCard(card);
-                    card.owner = player;
-                }
-            }
-        }
-    };
 
     /**
      * Clean up table after round is complete
      */
     self.clean = function () {
-        // move cards from table to discard
-        self.discards.question.addCard(self.table.question);
-        self.table.question = null;
-        // var count = self.table.answer.length;
-        _.each(self.table.answer, function (cards) {
-            _.each(cards.getCards(), function (card) {
-                card.owner = null;
-                self.discards.answer.addCard(card);
-                cards.removeCard(card);
-            }, this);
-        }, this);
-        self.table.answer = [];
-
         // reset players
         var removedNicks = [];
         _.each(self.players, function (player) {
@@ -421,10 +270,6 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         self.say(c.bold('CARD: ') + value);
         self.table.question = card;
 
-        // Record card and round in the database
-        self.dbModels.Question.findOne({where: {text: card.value}}).then(function (instance) {
-          instance.update({times_played: instance.times_played + 1}).then(function (q) { self.createRound(q.id); });
-        });
 
         // PM Card to players
         _.each(_.where(self.players, {ispicker: false, isActive: true}), function(player) {
@@ -453,7 +298,7 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
      * @param cards card indexes in players hand
      * @param player Player who played the cards
      */
-    self.playCard = function (cards, player) {
+    self.playAnswer = function (cards, player) {
         // don't allow if game is paused
         if (self.state === STATES.PAUSED) {
             self.say('Game is currently paused.');
@@ -489,10 +334,6 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
                     player.inactiveRounds = 0;
                     self.pm(player.nick, 'You played: ' + self.getFullEntry(self.table.question, playerCards.getCards()));
 
-                    // Update card combo table
-                    self.dbModels.Player.findOne({where: {nick: player.nick}}).then(function (dbPlayer) {
-                      self.updateCardComboTable(dbPlayer.id, playerCards.getCards());
-                    });
 
                     // show entries if all players have played
                     if (self.checkAllPlayed()) {
@@ -504,69 +345,6 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
             console.warn('Invalid player tried to play a card');
         }
     };
-
-    /**
-     * Allow a player to discard a number of cards once per turn
-     * @param cards Array of card indexes to discard
-     * @param player The player who discarded
-     */
-    self.discard = function (cards, player) {
-        if (self.state === STATES.PAUSED) {
-            self.say('Game is currently paused');
-            return false;
-        }
-
-        console.log(player.nick + ' discarded ' + cards.join(', '));
-        cards = _.uniq(cards);
-
-        if (self.state !== STATES.PLAYABLE || player.cards.numCards() === 0) {
-            self.say(player.nick + ': Can\'t discard at the moment.');
-        } else if (typeof player !== 'undefined') {
-            if (player.ispicker === true) {
-                self.say(player.nick + ': You are the card picker. You cannot discard cards until you are a regular player.');
-            } else {
-                if (player.hasDiscarded === true) {
-                    self.say(player.nick + ': You may only discard once per turn.');
-                } else if (player.points < 1) {
-                    self.say(player.nick + ': You must have at least one awesome point to discard.');
-                } else {
-                    var playerCards;
-
-                    if (cards.length === 0){
-                        cards = [];
-                        for (var i = 0; i < player.cards.numCards(); i++) {
-                            cards[i] = i;
-                        }
-                    }
-
-                    try {
-                        playerCards = player.cards.pickCards(cards);
-                    } catch (error) {
-                        self.pm(player.nick, 'Invalid card index.');
-                        return false;
-                    }
-
-                    self.deal(player, player.cards.numCards() + playerCards.numCards());
-
-                    // Add the cards to the discard pile, and reduce points, and mark the player as having discarded
-                    _.each(playerCards.getCards(), function (card) {
-                        card.owner = null;
-                        self.discards.answer.addCard(card);
-                        playerCards.removeCard(card);
-                    });
-
-                    player.hasDiscarded = true;
-                    player.points--;
-
-                    self.pm(player.nick, 'You have discarded, and have ' + player.points + ' ' +
-                        inflection.inflect('points', player.points) + ' remaining');
-                    self.showCards(player);
-                }
-            }
-        } else {
-            console.warn('Invalid player tried to discard cards')
-        }
-    }
 
     /**
      * Check the time that has elapsed since the beinning of the turn.
@@ -679,10 +457,6 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
                 self.say(c.bold('Winner is: ') + owner.nick + ' with "' + self.getFullEntry(self.table.question, winner.getCards()) +
                     '" and gets one awesome point! ' + owner.nick + ' has ' + owner.points + ' awesome ' + inflection.inflect('point', owner.points) + '.');
 
-                var round = self.dbCurrentRound;
-                self.dbModels.Player.findOne({where: {nick: owner.nick}}).then(function (dbPlayer) {
-                  round.update({winner_id: dbPlayer.id});
-                });
 
                 self.clean();
                 self.nextRound();
@@ -740,42 +514,27 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
      * @returns The new player or false if invalid player
      */
     self.addPlayer = function (player) {
-        if (typeof self.dbGame === 'undefined') {
-          self.playersToAdd.push(player);
-        } else if (typeof self.getPlayer({nick: player.nick, hostname: player.hostname, isActive: true}) === 'undefined' ) {
-            // Returning players
-            var oldPlayer = _.findWhere(self.players, {nick: player.nick, hostname: player.hostname, isActive: false});
-            if (typeof oldPlayer !== 'undefined') {
-                if (oldPlayer.idleCount >= config.gameOptions.idleLimit) {
-                    self.say(player.nick + ': You have idled too much and have been banned from this game.');
-                    return false;
-                }
-
-                oldPlayer.isActive = true;
-            } else {
-              self.players.push(player);
+        if (typeof self.getPlayer({nick: player.nick, hostname: player.hostname, isActive: true}) === 'undefined' ) {
+        // Returning players
+        var oldPlayer = _.findWhere(self.players, {nick: player.nick, hostname: player.hostname, isActive: false});
+        if (typeof oldPlayer !== 'undefined') {
+            if (oldPlayer.idleCount >= config.gameOptions.idleLimit) {
+                self.say(player.nick + ': You have idled too much and have been banned from this game.');
+                return false;
             }
+            oldPlayer.isActive = true;
+        } else {
+            self.players.push(player);
+        }
+        self.say(player.nick + ' has joined the game');
 
-            self.say(player.nick + ' has joined the game');
-
-            // check if waiting for players
-            if (self.state === STATES.WAITING && _.where(self.players, { isActive: true }).length >= 3) {
-                // enough players, start the game
-                self.nextRound();
-            }
-
-            self.updateOrCreateInstance(
-              self.dbModels.Player,
-              {where: {nick: player.nick}},
-              {nick: player.nick, last_game_id: self.dbGame.id},
-              {last_game_id: self.dbGame.id}
-            );
-
-            return player;
-
+        // check if waiting for players
+        if (self.state === STATES.WAITING && _.where(self.players, { isActive: true }).length >= 3) {
+            // enough players, start the game
+            self.nextRound();
         }
 
-        return false;
+        return player;
     };
 
     /**
@@ -1014,13 +773,6 @@ var Game = function Game(channel, client, config, cmdArgs, dbModels) {
         if (typeof player !== 'undefined') {
             player.nick = newnick;
         }
-
-        self.updateOrCreateInstance(
-          self.dbModels.Player,
-          {where: {nick: oldnick}},
-          null,
-          {nick: newnick}
-        );
     };
 
     /**

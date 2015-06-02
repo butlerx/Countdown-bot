@@ -4,7 +4,7 @@
   "description": "Countdown IRC bot",
   "main": "app.js",
   "author": "butlerx <butlerx@redbrick.dcu.ie>",
-  "forkedFrom": "https://github.com/teeli/cah-irc",
+  "forkedFrom": "https://github.com/Creadak/CAH-Bot",
   "license": "Creative Commons BY-NC-SA 2.0",
   "scripts": {
     "start": "node node_modules/grunt-cli/bin/grunt",
