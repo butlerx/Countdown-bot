@@ -3,7 +3,7 @@
 IRC bot that let's you play countdown in IRC. The game is running in irc.redbrick.dcu.ie on #countdown, but you can just as easily run your own instance on your own channel for more private games.
 
 #development Stage
-this bot is in pre-Alpha stage and not near ready
+Development on this bot has stopped as it has been made part of github.com/creadak/creabot
 
 ##Commands
 * **!start #** - Start a new game. Optional parameter can be used to set the number playing (e.g. `!start 10` to wait for the people to join.)
